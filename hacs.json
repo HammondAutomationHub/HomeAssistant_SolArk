@@ -2,9 +2,9 @@
   "name": "SolArk Cloud",
   "content_in_root": false,
   "render_readme": true,
-  "filename": "",
-  "domains": ["solark"],
+  "domains": [
+    "solark"
+  ],
   "homeassistant": "2023.5.0",
-  "iot_class": "cloud_polling",
   "country": "US"
 }

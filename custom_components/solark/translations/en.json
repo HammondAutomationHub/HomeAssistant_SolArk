@@ -1,0 +1,89 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "SolArk Cloud",
+        "description": "Enter your SolArk Cloud credentials and plant ID.",
+        "data": {
+          "username": "Username (email)",
+          "password": "Password",
+          "plant_id": "Plant ID",
+          "base_url": "Base URL",
+          "api_url": "API URL",
+          "scan_interval": "Polling interval (seconds)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Unable to connect to SolArk API.",
+      "auth_failed": "Authentication failed. Check credentials.",
+      "unknown": "Unexpected error occurred."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "SolArk Cloud options",
+        "description": "Adjust advanced options for the SolArk integration.",
+        "data": {
+          "scan_interval": "Polling interval (seconds)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "pv_power": {
+        "name": "PV Power"
+      },
+      "load_power": {
+        "name": "Load Power"
+      },
+      "grid_power": {
+        "name": "Grid Power"
+      },
+      "battery_power": {
+        "name": "Battery Power"
+      },
+      "battery_soc": {
+        "name": "Battery SOC"
+      },
+      "energy_today": {
+        "name": "Energy Today"
+      },
+      "energy_total": {
+        "name": "Energy Total"
+      },
+      "battery_voltage": {
+        "name": "Battery Voltage"
+      },
+      "battery_float_voltage": {
+        "name": "Battery Float Voltage"
+      },
+      "battery_capacity": {
+        "name": "Battery Capacity"
+      },
+      "battery_low_cap": {
+        "name": "Battery Low Capacity"
+      },
+      "battery_restart_cap": {
+        "name": "Battery Restart Capacity"
+      },
+      "battery_shutdown_cap": {
+        "name": "Battery Shutdown Capacity"
+      },
+      "grid_peak_power": {
+        "name": "Grid Peak Power"
+      },
+      "gen_peak_power": {
+        "name": "Generator Peak Power"
+      },
+      "pv_max_limit": {
+        "name": "PV Max Limit"
+      },
+      "solar_max_sell_power": {
+        "name": "Solar Max Sell Power"
+      }
+    }
+  }
+}

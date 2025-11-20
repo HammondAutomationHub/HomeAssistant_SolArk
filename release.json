@@ -1,0 +1,6 @@
+{
+  "tag": "v4.0.1",
+  "name": "SolArk Cloud v4.0.1",
+  "description": "Minor packaging release with verified logging and computed STROG/protocol-2 sensors.",
+  "prerelease": false
+}

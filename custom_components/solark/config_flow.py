@@ -18,8 +18,10 @@ from .const import (
     CONF_PLANT_ID,
     CONF_BASE_URL,
     CONF_API_URL,
+    CONF_SCAN_INTERVAL,
     DEFAULT_BASE_URL,
     DEFAULT_API_URL,
+    DEFAULT_SCAN_INTERVAL,
 )
 from .api import SolArkCloudAPI, SolArkCloudAPIError
 
@@ -77,6 +79,9 @@ class SolArkConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         CONF_PLANT_ID: user_input[CONF_PLANT_ID],
                         CONF_BASE_URL: user_input.get(CONF_BASE_URL, DEFAULT_BASE_URL),
                         CONF_API_URL: user_input.get(CONF_API_URL, DEFAULT_API_URL),
+                        CONF_SCAN_INTERVAL: int(
+                            user_input.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+                        ),
                     },
                 )
 
@@ -89,6 +94,7 @@ class SolArkConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required(CONF_PLANT_ID): str,
                 vol.Optional(CONF_BASE_URL, default=DEFAULT_BASE_URL): str,
                 vol.Optional(CONF_API_URL, default=DEFAULT_API_URL): str,
+                vol.Optional(CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL): int,
             }
         )
 
@@ -97,3 +103,49 @@ class SolArkConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=data_schema,
             errors=errors,
         )
+
+
+class SolArkOptionsFlowHandler(config_entries.OptionsFlow):
+    """Handle SolArk options (post-install settings)."""
+
+    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+        """Initialize options flow."""
+        self.config_entry = config_entry
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Manage the SolArk options."""
+        if user_input is not None:
+            # Merge options with existing data (we store scan_interval in options)
+            return self.async_create_entry(title="", data=user_input)
+
+        current_interval = self.config_entry.options.get(
+            CONF_SCAN_INTERVAL,
+            self.config_entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
+        )
+
+        options_schema = vol.Schema(
+            {
+                vol.Optional(
+                    CONF_SCAN_INTERVAL,
+                    default=current_interval,
+                ): int,
+            }
+        )
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=options_schema,
+        )
+
+
+@config_entries.HANDLERS.register(DOMAIN)  # type: ignore[attr-defined]
+class SolArkConfigFlowWithOptions(SolArkConfigFlow):
+    """Config flow class registered with options support."""
+
+    @staticmethod
+    def async_get_options_flow(
+        config_entry: config_entries.ConfigEntry,
+    ) -> config_entries.OptionsFlow:
+        return SolArkOptionsFlowHandler(config_entry)

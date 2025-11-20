@@ -20,8 +20,10 @@ from .const import (
     CONF_PLANT_ID,
     CONF_BASE_URL,
     CONF_API_URL,
+    CONF_SCAN_INTERVAL,
     DEFAULT_BASE_URL,
     DEFAULT_API_URL,
+    DEFAULT_SCAN_INTERVAL,
     PLATFORMS,
 )
 from .api import SolArkCloudAPI, SolArkCloudAPIError
@@ -43,6 +45,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     plant_id = entry.data[CONF_PLANT_ID]
     base_url = entry.data.get(CONF_BASE_URL, DEFAULT_BASE_URL)
     api_url = entry.data.get(CONF_API_URL, DEFAULT_API_URL)
+    scan_interval = int(entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL))
+
+    _LOGGER.debug(
+        "Setting up SolArk entry %s with scan_interval=%s seconds",
+        entry.entry_id,
+        scan_interval,
+    )
 
     session = async_get_clientsession(hass)
 
@@ -68,7 +77,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         _LOGGER,
         name=f"SolArk {plant_id}",
         update_method=async_update_data,
-        update_interval=timedelta(seconds=30),
+        update_interval=timedelta(seconds=scan_interval),
     )
 
     await coordinator.async_config_entry_first_refresh()

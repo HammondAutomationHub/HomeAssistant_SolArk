@@ -41,14 +41,30 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         auth_mode=data.get(CONF_AUTH_MODE, DEFAULT_AUTH_MODE),
     )
 
+    # First, try to authenticate - this is the critical step that catches wrong credentials
     try:
+        _LOGGER.debug("Starting authentication for user: %s", data[CONF_EMAIL])
         auth_success = await api.authenticate()
         if not auth_success:
             raise SolArkAuthError("Authentication failed - invalid credentials")
+        _LOGGER.debug("Authentication successful")
+    except SolArkAuthError as err:
+        _LOGGER.error("Authentication error: %s", err)
+        raise InvalidAuth(str(err)) from err
+    except SolArkConnectionError as err:
+        _LOGGER.error("Connection error: %s", err)
+        raise CannotConnect(str(err)) from err
+    except Exception as err:
+        _LOGGER.exception("Unexpected error during authentication: %s", err)
+        raise UnknownError(str(err)) from err
 
+    # Now try to get plant data - this validates the Plant ID
+    try:
+        _LOGGER.debug("Fetching plant data for Plant ID: %s", data[CONF_PLANT_ID])
         plant_data = await api.get_plant_data(data[CONF_PLANT_ID])
         if not plant_data:
             raise SolArkAPIError(f"Unable to retrieve data for Plant ID: {data[CONF_PLANT_ID]}")
+        _LOGGER.debug("Plant data retrieved successfully")
 
         return {
             "title": f"Sol-Ark Plant {data[CONF_PLANT_ID]}",
@@ -56,16 +72,17 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         }
 
     except SolArkAuthError as err:
-        _LOGGER.error("Authentication error: %s", err)
+        # Token issue after initial auth
+        _LOGGER.error("Authentication error during plant data fetch: %s", err)
         raise InvalidAuth(str(err)) from err
     except SolArkConnectionError as err:
-        _LOGGER.error("Connection error: %s", err)
+        _LOGGER.error("Connection error during plant data fetch: %s", err)
         raise CannotConnect(str(err)) from err
     except SolArkAPIError as err:
-        _LOGGER.error("API error: %s", err)
+        _LOGGER.error("API error during plant data fetch: %s", err)
         raise InvalidPlantID(str(err)) from err
     except Exception as err:
-        _LOGGER.exception("Unexpected error during validation: %s", err)
+        _LOGGER.exception("Unexpected error during plant data fetch: %s", err)
         raise UnknownError(str(err)) from err
 
 

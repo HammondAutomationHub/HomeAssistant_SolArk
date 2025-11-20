@@ -189,6 +189,8 @@ class SolArkAPI:
         }
         payload = {"plantId": plant_id}
 
+        _LOGGER.debug("Fetching plant data for Plant ID: %s from %s", plant_id, url)
+
         try:
             async with async_timeout.timeout(DEFAULT_TIMEOUT):
                 async with self.session.post(
@@ -197,77 +199,112 @@ class SolArkAPI:
                     response_text = await response.text()
                     
                     _LOGGER.debug(
-                        "Plant data response status: %s",
-                        response.status
+                        "Plant data response status: %s, content-type: %s",
+                        response.status,
+                        response.headers.get('content-type', 'unknown')
                     )
+                    _LOGGER.debug("Response body (first 500 chars): %s", response_text[:500])
 
-                    if response.status == 401:
+                    if response.status == 400:
+                        raise SolArkAPIError(
+                            f"Bad request (400). The Plant ID format may be invalid."
+                        )
+                    elif response.status == 401:
+                        # Token may have expired
                         self.token = None
                         raise SolArkAuthError(
-                            "Authentication token expired. Please re-authenticate."
+                            "Authentication token expired or invalid. Please re-authenticate."
+                        )
+                    elif response.status == 403:
+                        raise SolArkAPIError(
+                            f"Access forbidden (403). You may not have permission to view Plant ID {plant_id}."
                         )
                     elif response.status == 404:
                         raise SolArkAPIError(
-                            f"Plant ID {plant_id} not found. Please verify your Plant ID."
+                            f"Plant ID {plant_id} not found (404). Please verify your Plant ID is correct."
                         )
                     elif response.status == 429:
                         raise SolArkRateLimitError(
-                            "Rate limit exceeded. Consider increasing the update interval."
+                            "Rate limit exceeded (429). Consider increasing the update interval."
                         )
                     elif response.status >= 500:
                         raise SolArkConnectionError(
                             f"Sol-Ark server error ({response.status}). Please try again later."
                         )
                     elif response.status != 200:
+                        _LOGGER.warning("Unexpected status %s: %s", response.status, response_text[:200])
                         raise SolArkAPIError(
-                            f"Unexpected response status {response.status}: {response_text[:200]}"
+                            f"Unexpected response status {response.status}"
                         )
 
                     try:
                         data = await response.json()
                     except aiohttp.ContentTypeError as err:
+                        _LOGGER.error("Invalid JSON response: %s", response_text[:500])
                         raise SolArkAPIError(
-                            f"Invalid JSON response: {response_text[:200]}"
+                            f"Invalid JSON response. The API may have changed."
                         ) from err
 
                     if not isinstance(data, dict):
+                        _LOGGER.error("Response is not a dict: %s", type(data))
                         raise SolArkAPIError(
                             f"Invalid response format: expected dict, got {type(data)}"
                         )
 
-                    if data.get("success") is False or data.get("Success") is False:
+                    _LOGGER.debug("Response data keys: %s", list(data.keys()))
+
+                    # Check for error in response
+                    success_flag = data.get("success", data.get("Success"))
+                    if success_flag is False:
                         error_msg = (
                             data.get("message")
                             or data.get("Message")
                             or data.get("msg")
+                            or data.get("error")
                             or "Unknown error"
                         )
+                        _LOGGER.error("API returned success=false: %s", error_msg)
+                        
+                        # Check if error message indicates auth issue
+                        if "token" in error_msg.lower() or "auth" in error_msg.lower():
+                            self.token = None
+                            raise SolArkAuthError(f"Authentication error: {error_msg}")
+                        
                         raise SolArkAPIError(f"API error: {error_msg}")
 
+                    # Extract plant data from various response formats
                     plant_data = None
                     if "data" in data:
                         plant_data = data["data"]
                     elif "Data" in data:
                         plant_data = data["Data"]
+                    elif "result" in data:
+                        plant_data = data["result"]
                     else:
+                        # Maybe the whole response is the plant data
                         plant_data = data
 
                     if not plant_data:
+                        _LOGGER.error("No plant data in response: %s", data)
                         raise SolArkAPIError(
-                            f"No plant data returned for Plant ID {plant_id}"
+                            f"No plant data returned for Plant ID {plant_id}. Response keys: {list(data.keys())}"
                         )
 
+                    _LOGGER.debug("Plant data retrieved successfully, data keys: %s", list(plant_data.keys()) if isinstance(plant_data, dict) else "not a dict")
                     return plant_data
 
         except asyncio.TimeoutError as err:
+            _LOGGER.error("Plant data request timeout after %s seconds", DEFAULT_TIMEOUT)
             raise SolArkConnectionError(
                 f"Request timeout after {DEFAULT_TIMEOUT}s."
             ) from err
         except aiohttp.ClientConnectorError as err:
+            _LOGGER.error("Cannot connect to %s: %s", self.base_url, err)
             raise SolArkConnectionError(
                 f"Cannot connect to {self.base_url}: {err}"
             ) from err
         except aiohttp.ClientError as err:
+            _LOGGER.error("Network error while fetching plant data: %s", err)
             raise SolArkConnectionError(
                 f"Network error while fetching plant data: {err}"
             ) from err

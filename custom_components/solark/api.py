@@ -1,4 +1,4 @@
-"""API client for Sol-Ark Cloud (STROG/protocol-2 aware)."""
+"""API client for Sol-Ark Cloud (SolArk 12K + HTML SOC)."""
 from __future__ import annotations
 
 import asyncio
@@ -6,12 +6,13 @@ from datetime import datetime, timedelta
 import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
+import re
 
 import aiohttp
 
 _LOGGER = logging.getLogger(__name__)
 
-# File logging into custom_components/solark/solark_debug.log
+# Log to custom_components/solark/solark_debug.log
 LOG_FILE = Path(__file__).parent / "solark_debug.log"
 
 if not any(
@@ -69,7 +70,9 @@ class SolArkCloudAPI:
             self.api_url,
         )
 
-    # ---------- helpers ----------
+    # -------------------------------------------------------------------------
+    # Helpers
+    # -------------------------------------------------------------------------
 
     def _get_headers(self, strict: bool = True) -> Dict[str, str]:
         headers: Dict[str, str] = {
@@ -167,7 +170,9 @@ class SolArkCloudAPI:
 
         return result
 
-    # ---------- auth ----------
+    # -------------------------------------------------------------------------
+    # Auth
+    # -------------------------------------------------------------------------
 
     async def _oauth_login(self) -> None:
         url = f"{self.api_url}/oauth/token"
@@ -318,10 +323,80 @@ class SolArkCloudAPI:
 
         raise SolArkCloudAPIError("All login methods failed: " + " | ".join(errors))
 
-    # ---------- plant data ----------
+    # -------------------------------------------------------------------------
+    # HTML SOC scraping
+    # -------------------------------------------------------------------------
+
+    async def _fetch_soc_from_html(self) -> Optional[float]:
+        """Fetch Battery SOC from the mys
+        olark overview HTML page.
+
+        Uses the URL style:
+          https://www.mysolark.com/plants/overview/{plant_id}/2
+
+        and looks for:
+          <div class="soc">72.0%</div>
+        """
+        await self._ensure_token()
+
+        url = f"{self.base_url}/plants/overview/{self.plant_id}/2"
+        headers = self._get_headers(strict=True)
+        headers[
+            "Accept"
+        ] = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+
+        _LOGGER.debug("Fetching SOC from HTML overview page: %s", url)
+
+        try:
+            async with self._session.get(
+                url,
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=30),
+            ) as resp:
+                text = await resp.text()
+                _LOGGER.debug(
+                    "HTML overview response HTTP %s, length=%s",
+                    resp.status,
+                    len(text),
+                )
+                if resp.status != 200:
+                    _LOGGER.warning(
+                        "HTML SOC fetch got HTTP %s, ignoring", resp.status
+                    )
+                    return None
+        except asyncio.TimeoutError as e:  # noqa: BLE001
+            _LOGGER.warning("HTML SOC fetch timeout: %s", e)
+            return None
+        except aiohttp.ClientError as e:  # noqa: BLE001
+            _LOGGER.warning("HTML SOC fetch client error: %s", e)
+            return None
+
+        # Regex: <div class="soc">72.0%</div>
+        m = re.search(
+            r'class="soc"[^>]*>([0-9]+(?:\.[0-9]+)?)\s*%',
+            text,
+        )
+        if not m:
+            _LOGGER.warning("Could not find SOC div in HTML overview page")
+            return None
+
+        try:
+            soc_value = float(m.group(1))
+        except ValueError:
+            _LOGGER.warning(
+                "Failed to parse SOC percentage from HTML: %r", m.group(1)
+            )
+            return None
+
+        _LOGGER.debug("Parsed SOC from HTML as %s%%", soc_value)
+        return soc_value
+
+    # -------------------------------------------------------------------------
+    # Plant data
+    # -------------------------------------------------------------------------
 
     async def get_plant_data(self) -> Dict[str, Any]:
-        """Fetch live plant data (via inverter SN) and merge energy stats."""
+        """Fetch live plant data and HTML SOC for SolArk 12K."""
         await self._ensure_token()
         _LOGGER.debug("Getting plant data for plant_id=%s", self.plant_id)
 
@@ -378,7 +453,7 @@ class SolArkCloudAPI:
             "Live data keys for SN=%s: %s", sn, list(live_data.keys())
         )
 
-        # Merge energy data from inverter summary
+        # Merge energy from inverter summary if present
         try:
             etoday = first.get("etoday")
             etotal = first.get("etotal")
@@ -387,7 +462,20 @@ class SolArkCloudAPI:
             if etotal is not None:
                 live_data.setdefault("energyTotal", etotal)
         except Exception as e:  # noqa: BLE001
-            _LOGGER.debug("Unable to merge inverter energy stats into live data: %s", e)
+            _LOGGER.debug(
+                "Unable to merge inverter energy stats into live data: %s", e
+            )
+
+        # Fetch SOC from HTML and inject as battSoc
+        try:
+            soc_html = await self._fetch_soc_from_html()
+            if soc_html is not None:
+                live_data["battSoc"] = soc_html
+                _LOGGER.debug(
+                    "Injected battSoc from HTML into live_data: %s", soc_html
+                )
+        except Exception as e:  # noqa: BLE001
+            _LOGGER.warning("HTML SOC fetch/inject failed: %s", e)
 
         return live_data
 
@@ -400,6 +488,10 @@ class SolArkCloudAPI:
             _LOGGER.error("SolArk test_connection failed: %s", e)
             return False
 
+    # -------------------------------------------------------------------------
+    # Parsing helpers
+    # -------------------------------------------------------------------------
+
     def _safe_float(self, value: Any) -> float:
         try:
             if value is None:
@@ -409,15 +501,7 @@ class SolArkCloudAPI:
             return 0.0
 
     def parse_plant_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Map API fields to sensor values, with computed real-time power.
-
-        Tuned for SolArk 12K STROG/protocol-2 payloads:
-        - PV power from `pvPower` or voltN/currentN strings
-        - Battery power from `battPower` or `curVolt * chargeCurrent`
-        - Battery SOC from `battSoc` or `curCap/batteryCap`
-        - Grid net from meterA/B/C, then split into import/export
-        - Energy today / total from energyToday/etoday, energyTotal/etotal
-        """
+        """Map API + HTML fields to sensor values (SolArk 12K)."""
         if not isinstance(data, dict):
             _LOGGER.warning("parse_plant_data got non-dict: %r", data)
             return {}
@@ -426,7 +510,7 @@ class SolArkCloudAPI:
 
         sensors: Dict[str, Any] = {}
 
-        # ----- Energy today / total -----
+        # --- Energy today / total ---
         if "energyToday" in data or "etoday" in data:
             sensors["energy_today"] = self._safe_float(
                 data.get("energyToday", data.get("etoday"))
@@ -436,25 +520,23 @@ class SolArkCloudAPI:
                 data.get("energyTotal", data.get("etotal"))
             )
 
-        # ----- Battery SOC (direct) -----
+        # --- Battery SOC ---
+        # Prefer battSoc, which we injected from HTML.
         if "battSoc" in data:
             sensors["battery_soc"] = self._safe_float(data.get("battSoc"))
 
-        # ----- Battery SOC (derived from curCap / batteryCap) -----
+        # Fallback: SOC from curCap / batteryCap if battSoc missing
         if "battery_soc" not in sensors:
-            cur_cap_raw = data.get("curCap")
-            batt_cap_raw = data.get("batteryCap")
-            cur_cap = self._safe_float(cur_cap_raw)
-            batt_cap = self._safe_float(batt_cap_raw)
+            cur_cap = self._safe_float(data.get("curCap"))
+            batt_cap = self._safe_float(data.get("batteryCap"))
             if batt_cap > 0:
                 sensors["battery_soc"] = (cur_cap / batt_cap) * 100.0
 
-        # ----- PV power -----
-        # Prefer direct field if SolArk exposes it
+        # --- PV power ---
         if "pvPower" in data:
             sensors["pv_power"] = self._safe_float(data.get("pvPower"))
 
-        # Fallback: sum voltN * currentN (MPPT strings)
+        # Fallback: sum MPPT strings voltN * currentN
         pv_sum = 0.0
         for i in range(1, 13):
             v_raw = data.get(f"volt{i}")
@@ -463,34 +545,28 @@ class SolArkCloudAPI:
                 continue
             v = self._safe_float(v_raw)
             c = self._safe_float(c_raw)
-            string_power = v * c
-            pv_sum += string_power
+            pv_sum += v * c
+
         if "pv_power" not in sensors and pv_sum != 0.0:
             sensors["pv_power"] = pv_sum
 
-        # ----- Battery power -----
-        # Prefer direct battPower if present
+        # --- Battery power ---
         if "battPower" in data:
             sensors["battery_power"] = self._safe_float(data.get("battPower"))
 
-        # Fallback: DC bus voltage * chargeCurrent
-        cur_volt_raw = data.get("curVolt")  # DC battery voltage
-        charge_current_raw = data.get("chargeCurrent")  # charging (+) / discharging (-)
-        cur_volt = self._safe_float(cur_volt_raw)
-        charge_current = self._safe_float(charge_current_raw)
-        if "battery_power" not in sensors and (cur_volt != 0.0 or charge_current != 0.0):
-            sensors["battery_power"] = cur_volt * charge_current
+        if "battery_power" not in sensors:
+            cur_volt = self._safe_float(data.get("curVolt"))
+            charge_current = self._safe_float(data.get("chargeCurrent"))
+            if cur_volt != 0.0 or charge_current != 0.0:
+                sensors["battery_power"] = cur_volt * charge_current
 
-        # ----- Grid net power from meterA/B/C -----
+        # --- Grid import/export from meterA/B/C ---
         meter_a = self._safe_float(data.get("meterA"))
         meter_b = self._safe_float(data.get("meterB"))
         meter_c = self._safe_float(data.get("meterC"))
         grid_net = meter_a + meter_b + meter_c
 
-        # Many SolArk 12K installs report signed power via these meters.
-        # We'll expose a signed net as helper (not as entity), and split to import/export.
         if grid_net != 0.0:
-            # Positive assumed = import, negative = export.
             if grid_net > 0:
                 sensors["grid_import_power"] = grid_net
                 sensors["grid_export_power"] = 0.0
@@ -498,17 +574,20 @@ class SolArkCloudAPI:
                 sensors["grid_import_power"] = 0.0
                 sensors["grid_export_power"] = abs(grid_net)
         else:
-            # If there are explicit gridImportPower/gridExportPower fields, prefer those
             if "gridImportPower" in data:
-                sensors["grid_import_power"] = self._safe_float(data.get("gridImportPower"))
+                sensors["grid_import_power"] = self._safe_float(
+                    data.get("gridImportPower")
+                )
             if "gridExportPower" in data:
-                sensors["grid_export_power"] = self._safe_float(data.get("gridExportPower"))
+                sensors["grid_export_power"] = self._safe_float(
+                    data.get("gridExportPower")
+                )
 
-        # Ensure keys always exist if we computed nothing
-        sensors.setdefault("grid_import_power", 0.0)
-        sensors.setdefault("grid_export_power", 0.0)
+        # Ensure all minimal sensors exist
         sensors.setdefault("pv_power", 0.0)
         sensors.setdefault("battery_power", 0.0)
+        sensors.setdefault("grid_import_power", 0.0)
+        sensors.setdefault("grid_export_power", 0.0)
         sensors.setdefault("battery_soc", 0.0)
         sensors.setdefault("energy_today", 0.0)
         sensors.setdefault("energy_total", 0.0)

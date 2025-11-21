@@ -1,7 +1,7 @@
 {
   "domain": "solark",
   "name": "SolArk Cloud",
-  "version": "4.0.7",
+  "version": "5.0.0",
   "documentation": "https://github.com/HammondAutomationHub/HomeAssistant_SolArk",
   "issue_tracker": "https://github.com/HammondAutomationHub/HomeAssistant_SolArk/issues",
   "requirements": [],

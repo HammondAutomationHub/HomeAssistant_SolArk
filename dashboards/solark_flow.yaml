@@ -1,18 +1,12 @@
-# Example SolArk dashboard view for Home Assistant
-#
-# Usage:
-# 1. Open your dashboard -> three dots -> Edit dashboard -> Raw configuration editor.
-# 2. Merge this view under the top-level `views:` list.
-#
-# Make sure the entity IDs match your actual SolArk sensors (rename if needed).
-
-title: SolArk
+# SolArk Power Flow Dashboard (v5.0.0)
+title: SolArk Power Flow
 path: solark
-icon: mdi:solar-power
+icon: mdi:battery
 cards:
   - type: vertical-stack
     cards:
       - type: custom:mushroom-chips-card
+        alignment: center
         chips:
           - type: template
             entity: sensor.solark_battery_soc
@@ -30,13 +24,17 @@ cards:
             content: >-
               PV {{ states('sensor.solark_pv_power') }} W
             icon: mdi:solar-power
-            icon_color: yellow
+            icon_color: >-
+              {% set pv = states('sensor.solark_pv_power')|float(0) %}
+              {% if pv > 0 %}yellow{% else %}grey{% endif %}
           - type: template
             entity: sensor.solark_load_power
             content: >-
               Load {{ states('sensor.solark_load_power') }} W
             icon: mdi:home-lightning-bolt
-            icon_color: blue
+            icon_color: >-
+              {% set load = states('sensor.solark_load_power')|float(0) %}
+              {% if load > 0 %}blue{% else %}grey{% endif %}
           - type: template
             entity: sensor.solark_grid_power
             content: >-
@@ -47,10 +45,9 @@ cards:
               {% if g > 0 %}orange{% elif g < 0 %}green{% else %}grey{% endif %}
 
       - type: grid
-        columns: 2
         square: false
+        columns: 4
         cards:
-          # PV
           - type: custom:mushroom-template-card
             entity: sensor.solark_pv_power
             primary: "PV"
@@ -60,19 +57,6 @@ cards:
             icon_color: >-
               {% set pv = states('sensor.solark_pv_power')|float(0) %}
               {% if pv > 0 %}yellow{% else %}grey{% endif %}
-
-          # Load
-          - type: custom:mushroom-template-card
-            entity: sensor.solark_load_power
-            primary: "Load"
-            secondary: >-
-              {{ states('sensor.solark_load_power') }} W
-            icon: mdi:home-lightning-bolt
-            icon_color: >-
-              {% set load = states('sensor.solark_load_power')|float(0) %}
-              {% if load > 0 %}blue{% else %}grey{% endif %}
-
-          # Battery with direction
           - type: custom:mushroom-template-card
             entity: sensor.solark_battery_soc
             primary: >-
@@ -80,7 +64,7 @@ cards:
             secondary: >-
               {% set p = states('sensor.solark_battery_power')|float(0) %}
               {% if p > 0 %}
-                Discharging {{ p | round(0) }} W → Load
+                Discharging {{ p | round(0) }} W
               {% elif p < 0 %}
                 Charging {{ (p * -1) | round(0) }} W
               {% else %}
@@ -105,11 +89,18 @@ cards:
               {% elif soc >= 40 %}orange
               {% else %}red
               {% endif %}
-
-          # Grid with direction
+          - type: custom:mushroom-template-card
+            entity: sensor.solark_load_power
+            primary: "Load"
+            secondary: >-
+              {{ states('sensor.solark_load_power') }} W
+            icon: mdi:home-lightning-bolt
+            icon_color: >-
+              {% set load = states('sensor.solark_load_power')|float(0) %}
+              {% if load > 0 %}blue{% else %}grey{% endif %}
           - type: custom:mushroom-template-card
             entity: sensor.solark_grid_power
-            primary: "Grid"
+            primary: "Grid (Net)"
             secondary: >-
               {% set g = states('sensor.solark_grid_power')|float(0) %}
               {% if g > 0 %}
@@ -141,7 +132,6 @@ cards:
               {{ states('sensor.solark_energy_today') }} kWh
             icon: mdi:calendar-today
             icon_color: teal
-
           - type: custom:mushroom-template-card
             entity: sensor.solark_energy_total
             primary: "Energy Total"
@@ -149,3 +139,53 @@ cards:
               {{ states('sensor.solark_energy_total') }} kWh
             icon: mdi:chart-line
             icon_color: indigo
+
+      - type: grid
+        columns: 2
+        square: false
+        cards:
+          - type: custom:apexcharts-card
+            header:
+              title: PV vs Load (Last 24h)
+              show: true
+            graph_span: 24h
+            span:
+              start: day
+            series:
+              - entity: sensor.solark_pv_power
+                name: PV
+                type: line
+                stroke_width: 2
+              - entity: sensor.solark_load_power
+                name: Load
+                type: line
+                stroke_width: 2
+          - type: custom:apexcharts-card
+            header:
+              title: Battery & Grid (Last 24h)
+              show: true
+            graph_span: 24h
+            span:
+              start: day
+            series:
+              - entity: sensor.solark_battery_power
+                name: Battery Power
+                type: line
+                stroke_width: 2
+              - entity: sensor.solark_grid_power
+                name: Grid Net
+                type: line
+                stroke_width: 2
+
+      - type: entities
+        title: SolArk Debug / Raw Values
+        entities:
+          - sensor.solark_pv_power
+          - sensor.solark_battery_power
+          - sensor.solark_grid_power
+          - sensor.solark_load_power
+          - sensor.solark_grid_import_power
+          - sensor.solark_grid_export_power
+          - sensor.solark_battery_soc
+          - sensor.solark_energy_today
+          - sensor.solark_energy_total

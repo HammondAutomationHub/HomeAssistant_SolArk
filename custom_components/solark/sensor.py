@@ -1,4 +1,4 @@
-"""SolArk sensors."""
+"""SolArk sensors (minimal set: PV/Battery/Grid core + energy)."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -25,8 +25,9 @@ class SolArkSensorDescription(SensorEntityDescription):
     key: str
 
 
+# Option 1: minimal, high-value sensors only
 SENSOR_DESCRIPTIONS: list[SolArkSensorDescription] = [
-    # Computed / direct real-time power values
+    # Core powers
     SolArkSensorDescription(
         key="pv_power",
         name="PV Power",
@@ -34,14 +35,8 @@ SENSOR_DESCRIPTIONS: list[SolArkSensorDescription] = [
         device_class=SensorDeviceClass.POWER,
     ),
     SolArkSensorDescription(
-        key="load_power",
-        name="Load Power",
-        native_unit_of_measurement="W",
-        device_class=SensorDeviceClass.POWER,
-    ),
-    SolArkSensorDescription(
-        key="grid_power",
-        name="Grid Power (net)",
+        key="battery_power",
+        name="Battery Power",
         native_unit_of_measurement="W",
         device_class=SensorDeviceClass.POWER,
     ),
@@ -57,51 +52,12 @@ SENSOR_DESCRIPTIONS: list[SolArkSensorDescription] = [
         native_unit_of_measurement="W",
         device_class=SensorDeviceClass.POWER,
     ),
-    SolArkSensorDescription(
-        key="battery_power",
-        name="Battery Power",
-        native_unit_of_measurement="W",
-        device_class=SensorDeviceClass.POWER,
-    ),
-    # Battery SOC & currents
+    # Battery SOC
     SolArkSensorDescription(
         key="battery_soc",
         name="Battery SOC",
         native_unit_of_measurement="%",
     ),
-    SolArkSensorDescription(
-        key="battery_current",
-        name="Battery Charge Current",
-        native_unit_of_measurement="A",
-    ),
-    # DC/AC voltages & currents
-    SolArkSensorDescription(
-        key="battery_dc_voltage",
-        name="Battery DC Voltage",
-        native_unit_of_measurement="V",
-        device_class=SensorDeviceClass.VOLTAGE,
-    ),
-    SolArkSensorDescription(
-        key="inverter_output_voltage",
-        name="Inverter Output Voltage",
-        native_unit_of_measurement="V",
-        device_class=SensorDeviceClass.VOLTAGE,
-    ),
-    SolArkSensorDescription(
-        key="inverter_output_current",
-        name="Inverter Output Current",
-        native_unit_of_measurement="A",
-    ),
-    # Per-string PV powers
-    *[
-        SolArkSensorDescription(
-            key=f"pv_string_{i}_power",
-            name=f"PV String {i} Power",
-            native_unit_of_measurement="W",
-            device_class=SensorDeviceClass.POWER,
-        )
-        for i in range(1, 13)
-    ],
     # Energy
     SolArkSensorDescription(
         key="energy_today",
@@ -114,83 +70,6 @@ SENSOR_DESCRIPTIONS: list[SolArkSensorDescription] = [
         name="Energy Total",
         native_unit_of_measurement="kWh",
         device_class=SensorDeviceClass.ENERGY,
-    ),
-    # Battery & limits
-    SolArkSensorDescription(
-        key="battery_voltage",
-        name="Battery Voltage",
-        native_unit_of_measurement="V",
-        device_class=SensorDeviceClass.VOLTAGE,
-    ),
-    SolArkSensorDescription(
-        key="battery_float_voltage",
-        name="Battery Float Voltage",
-        native_unit_of_measurement="V",
-        device_class=SensorDeviceClass.VOLTAGE,
-    ),
-    SolArkSensorDescription(
-        key="battery_capacity",
-        name="Battery Capacity",
-        native_unit_of_measurement="Ah",
-    ),
-    SolArkSensorDescription(
-        key="battery_low_cap",
-        name="Battery Low Capacity",
-        native_unit_of_measurement="%",
-    ),
-    SolArkSensorDescription(
-        key="battery_restart_cap",
-        name="Battery Restart Capacity",
-        native_unit_of_measurement="%",
-    ),
-    SolArkSensorDescription(
-        key="battery_shutdown_cap",
-        name="Battery Shutdown Capacity",
-        native_unit_of_measurement="%",
-    ),
-    # Limits / ratings
-    SolArkSensorDescription(
-        key="grid_peak_power",
-        name="Grid Peak Power",
-        native_unit_of_measurement="W",
-        device_class=SensorDeviceClass.POWER,
-    ),
-    SolArkSensorDescription(
-        key="gen_peak_power",
-        name="Generator Peak Power",
-        native_unit_of_measurement="W",
-        device_class=SensorDeviceClass.POWER,
-    ),
-    SolArkSensorDescription(
-        key="pv_max_limit",
-        name="PV Max Limit",
-        native_unit_of_measurement="W",
-        device_class=SensorDeviceClass.POWER,
-    ),
-    SolArkSensorDescription(
-        key="solar_max_sell_power",
-        name="Solar Max Sell Power",
-        native_unit_of_measurement="W",
-        device_class=SensorDeviceClass.POWER,
-    ),
-    # Grid meters
-    SolArkSensorDescription(
-        key="grid_meter_a",
-        name="Grid Meter Phase A",
-        native_unit_of_measurement="W",
-        device_class=SensorDeviceClass.POWER,
-    ),
-    SolArkSensorDescription(
-        key="grid_meter_b",
-        name="Grid Meter Phase B",
-        native_unit_of_measurement="W",
-        device_class=SensorDeviceClass.POWER,
-    ),
-    SolArkSensorDescription(
-        key="grid_meter_c",
-        name="Grid Meter Phase C",
-        native_unit_of_measurement="W",
-        device_class=SensorDeviceClass.POWER,
     ),
 ]
 

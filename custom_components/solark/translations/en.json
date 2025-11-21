@@ -36,11 +36,8 @@
       "pv_power": {
         "name": "PV Power"
       },
-      "load_power": {
-        "name": "Load Power"
-      },
-      "grid_power": {
-        "name": "Grid Power (net)"
+      "battery_power": {
+        "name": "Battery Power"
       },
       "grid_import_power": {
         "name": "Grid Import Power"
@@ -48,104 +45,14 @@
       "grid_export_power": {
         "name": "Grid Export Power"
       },
-      "battery_power": {
-        "name": "Battery Power"
-      },
       "battery_soc": {
         "name": "Battery SOC"
-      },
-      "battery_current": {
-        "name": "Battery Charge Current"
-      },
-      "battery_dc_voltage": {
-        "name": "Battery DC Voltage"
-      },
-      "inverter_output_voltage": {
-        "name": "Inverter Output Voltage"
-      },
-      "inverter_output_current": {
-        "name": "Inverter Output Current"
-      },
-      "pv_string_1_power": {
-        "name": "PV String 1 Power"
-      },
-      "pv_string_2_power": {
-        "name": "PV String 2 Power"
-      },
-      "pv_string_3_power": {
-        "name": "PV String 3 Power"
-      },
-      "pv_string_4_power": {
-        "name": "PV String 4 Power"
-      },
-      "pv_string_5_power": {
-        "name": "PV String 5 Power"
-      },
-      "pv_string_6_power": {
-        "name": "PV String 6 Power"
-      },
-      "pv_string_7_power": {
-        "name": "PV String 7 Power"
-      },
-      "pv_string_8_power": {
-        "name": "PV String 8 Power"
-      },
-      "pv_string_9_power": {
-        "name": "PV String 9 Power"
-      },
-      "pv_string_10_power": {
-        "name": "PV String 10 Power"
-      },
-      "pv_string_11_power": {
-        "name": "PV String 11 Power"
-      },
-      "pv_string_12_power": {
-        "name": "PV String 12 Power"
       },
       "energy_today": {
         "name": "Energy Today"
       },
       "energy_total": {
         "name": "Energy Total"
-      },
-      "battery_voltage": {
-        "name": "Battery Voltage"
-      },
-      "battery_float_voltage": {
-        "name": "Battery Float Voltage"
-      },
-      "battery_capacity": {
-        "name": "Battery Capacity"
-      },
-      "battery_low_cap": {
-        "name": "Battery Low Capacity"
-      },
-      "battery_restart_cap": {
-        "name": "Battery Restart Capacity"
-      },
-      "battery_shutdown_cap": {
-        "name": "Battery Shutdown Capacity"
-      },
-      "grid_peak_power": {
-        "name": "Grid Peak Power"
-      },
-      "gen_peak_power": {
-        "name": "Generator Peak Power"
-      },
-      "pv_max_limit": {
-        "name": "PV Max Limit"
-      },
-      "solar_max_sell_power": {
-        "name": "Solar Max Sell Power"
-      },
-      "grid_meter_a": {
-        "name": "Grid Meter Phase A"
-      },
-      "grid_meter_b": {
-        "name": "Grid Meter Phase B"
-      },
-      "grid_meter_c": {
-        "name": "Grid Meter Phase C"
       }
     }
   }

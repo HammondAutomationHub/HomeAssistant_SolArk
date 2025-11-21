@@ -1,5 +1,13 @@
 # Changelog
 
+## 4.0.3
+- Trimmed entity set down to a minimal, high-value group:
+  - `pv_power`, `battery_power`
+  - `grid_import_power`, `grid_export_power`
+  - `battery_soc`
+  - `energy_today`, `energy_total`
+- All other internal / per-string / grid-meter sensors are no longer exposed as entities.
+
 ## 4.0.2
 - Added additional sensors:
   - Battery DC voltage (`battery_dc_voltage`)

@@ -1,4 +1,4 @@
-"""SolArk sensors (minimal set: PV/Battery/Grid core + energy)."""
+"""SolArk sensors (high-value set using energy/flow)."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -25,9 +25,8 @@ class SolArkSensorDescription(SensorEntityDescription):
     key: str
 
 
-# Option 1: minimal, high-value sensors only
 SENSOR_DESCRIPTIONS: list[SolArkSensorDescription] = [
-    # Core powers
+    # Real-time powers from energy/flow:
     SolArkSensorDescription(
         key="pv_power",
         name="PV Power",
@@ -41,6 +40,19 @@ SENSOR_DESCRIPTIONS: list[SolArkSensorDescription] = [
         device_class=SensorDeviceClass.POWER,
     ),
     SolArkSensorDescription(
+        key="grid_power",
+        name="Grid Power (Net)",
+        native_unit_of_measurement="W",
+        device_class=SensorDeviceClass.POWER,
+    ),
+    SolArkSensorDescription(
+        key="load_power",
+        name="Load Power",
+        native_unit_of_measurement="W",
+        device_class=SensorDeviceClass.POWER,
+    ),
+    # Grid import/export derived from meterA/B/C:
+    SolArkSensorDescription(
         key="grid_import_power",
         name="Grid Import Power",
         native_unit_of_measurement="W",
@@ -52,13 +64,13 @@ SENSOR_DESCRIPTIONS: list[SolArkSensorDescription] = [
         native_unit_of_measurement="W",
         device_class=SensorDeviceClass.POWER,
     ),
-    # Battery SOC
+    # Battery SOC:
     SolArkSensorDescription(
         key="battery_soc",
         name="Battery SOC",
         native_unit_of_measurement="%",
     ),
-    # Energy
+    # Energy:
     SolArkSensorDescription(
         key="energy_today",
         name="Energy Today",

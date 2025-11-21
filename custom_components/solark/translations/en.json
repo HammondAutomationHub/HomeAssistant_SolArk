@@ -39,6 +39,12 @@
       "battery_power": {
         "name": "Battery Power"
       },
+      "grid_power": {
+        "name": "Grid Power (Net)"
+      },
+      "load_power": {
+        "name": "Load Power"
+      },
       "grid_import_power": {
         "name": "Grid Import Power"
       },

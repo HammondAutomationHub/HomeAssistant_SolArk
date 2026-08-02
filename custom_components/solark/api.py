@@ -245,10 +245,13 @@ class SolArkCloudAPI:
         )
 
     async def _legacy_login(self) -> None:
-        url = "https://api.solarkcloud.com/rest/account/login"
+        # Fallback path on the same API host the portal uses today.
+        url = f"{self.api_url}/rest/account/login"
         headers = {
             "Accept": "application/json",
             "Content-Type": "application/json",
+            "Origin": self.base_url,
+            "Referer": f"{self.base_url}/",
         }
         payload = {"username": self.username, "password": self.password}
 
@@ -428,8 +431,27 @@ class SolArkCloudAPI:
             return flow_resp
         return {}
 
+    async def _get_realtime_data(self) -> Dict[str, Any]:
+        """Fetch plant realtime summary (etoday/etotal/pac)."""
+        await self._ensure_token()
+        endpoint = f"/api/v1/plant/{self.plant_id}/realtime"
+        try:
+            resp = await self._request(
+                "GET",
+                endpoint,
+                {"id": self.plant_id},
+            )
+        except SolArkCloudAPIError as e:  # noqa: BLE001
+            _LOGGER.warning("Realtime request failed: %s", e)
+            return {}
+
+        data = resp.get("data") if isinstance(resp, dict) else None
+        if isinstance(data, dict):
+            return data
+        return {}
+
     async def get_plant_data(self) -> Dict[str, Any]:
-        """Fetch combined plant data: inverter live + power flow."""
+        """Fetch combined plant data: inverter live + power flow + realtime."""
         # Start with inverter live data
         live_data = await self._get_inverter_live_data()
 
@@ -444,6 +466,17 @@ class SolArkCloudAPI:
                         live_data[k] = v
         except Exception as e:  # noqa: BLE001
             _LOGGER.warning("Unable to merge flow data into live data: %s", e)
+
+        # Realtime is the portal's source for plant-level etoday/etotal.
+        try:
+            realtime = await self._get_realtime_data()
+            if realtime:
+                if "etoday" in realtime and "energyToday" not in live_data:
+                    live_data["energyToday"] = realtime.get("etoday")
+                if "etotal" in realtime and "energyTotal" not in live_data:
+                    live_data["energyTotal"] = realtime.get("etotal")
+        except Exception as e:  # noqa: BLE001
+            _LOGGER.warning("Unable to merge realtime data into live data: %s", e)
 
         return live_data
 
@@ -474,7 +507,7 @@ class SolArkCloudAPI:
         Uses:
         - energy/flow endpoint for:
           pvPower, battPower, gridOrMeterPower, loadOrEpsPower, soc
-        - dy/store/{sn}/read endpoint for:
+        - dy/store/{sn}/read (+ inverter list / realtime) for:
           energyToday, energyTotal, meterA/B/C, voltN/currentN, etc.
         """
         if not isinstance(data, dict):

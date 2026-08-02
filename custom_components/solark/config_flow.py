@@ -22,6 +22,7 @@ from .const import (
     DEFAULT_BASE_URL,
     DEFAULT_API_URL,
     DEFAULT_SCAN_INTERVAL,
+    normalize_solark_urls,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -31,12 +32,16 @@ async def _test_connection(
     hass, data: dict[str, Any]
 ) -> tuple[bool, str | None]:
     session = async_get_clientsession(hass)
+    base_url, api_url = normalize_solark_urls(
+        data.get(CONF_BASE_URL, DEFAULT_BASE_URL),
+        data.get(CONF_API_URL, DEFAULT_API_URL),
+    )
     api = SolArkCloudAPI(
         username=data[CONF_USERNAME],
         password=data[CONF_PASSWORD],
         plant_id=data[CONF_PLANT_ID],
-        base_url=data.get(CONF_BASE_URL, DEFAULT_BASE_URL),
-        api_url=data.get(CONF_API_URL, DEFAULT_API_URL),
+        base_url=base_url,
+        api_url=api_url,
         session=session,
     )
 
@@ -70,14 +75,18 @@ class SolArkConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 await self.async_set_unique_id(unique_id)
                 self._abort_if_unique_id_configured()
 
+                base_url, api_url = normalize_solark_urls(
+                    user_input.get(CONF_BASE_URL, DEFAULT_BASE_URL),
+                    user_input.get(CONF_API_URL, DEFAULT_API_URL),
+                )
                 return self.async_create_entry(
                     title=f"SolArk {user_input[CONF_PLANT_ID]}",
                     data={
                         CONF_USERNAME: user_input[CONF_USERNAME],
                         CONF_PASSWORD: user_input[CONF_PASSWORD],
                         CONF_PLANT_ID: user_input[CONF_PLANT_ID],
-                        CONF_BASE_URL: user_input.get(CONF_BASE_URL, DEFAULT_BASE_URL),
-                        CONF_API_URL: user_input.get(CONF_API_URL, DEFAULT_API_URL),
+                        CONF_BASE_URL: base_url,
+                        CONF_API_URL: api_url,
                         CONF_SCAN_INTERVAL: int(
                             user_input.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
                         ),

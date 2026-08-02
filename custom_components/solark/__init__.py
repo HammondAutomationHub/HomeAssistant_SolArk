@@ -26,6 +26,7 @@ from .const import (
     DEFAULT_API_URL,
     DEFAULT_SCAN_INTERVAL,
     PLATFORMS,
+    normalize_solark_urls,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -45,6 +46,28 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     plant_id = entry.data[CONF_PLANT_ID]
     base_url = entry.data.get(CONF_BASE_URL, DEFAULT_BASE_URL)
     api_url = entry.data.get(CONF_API_URL, DEFAULT_API_URL)
+    base_url, api_url = normalize_solark_urls(base_url, api_url)
+
+    # Persist migrated hosts so existing installs keep working after Sol-Ark
+    # moved off mysolark.com / ecsprod-api-new.solarkcloud.com.
+    if (
+        entry.data.get(CONF_BASE_URL) != base_url
+        or entry.data.get(CONF_API_URL) != api_url
+    ):
+        _LOGGER.warning(
+            "Updating SolArk URLs for entry %s to base_url=%s api_url=%s",
+            entry.entry_id,
+            base_url,
+            api_url,
+        )
+        hass.config_entries.async_update_entry(
+            entry,
+            data={
+                **entry.data,
+                CONF_BASE_URL: base_url,
+                CONF_API_URL: api_url,
+            },
+        )
 
     scan_interval = int(
         entry.options.get(
@@ -54,9 +77,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
 
     _LOGGER.debug(
-        "Setting up SolArk entry %s with scan_interval=%s seconds",
+        "Setting up SolArk entry %s with scan_interval=%s seconds base_url=%s api_url=%s",
         entry.entry_id,
         scan_interval,
+        base_url,
+        api_url,
     )
 
     session = async_get_clientsession(hass)

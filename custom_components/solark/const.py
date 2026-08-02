@@ -5,11 +5,14 @@ CONF_PASSWORD = "password"
 CONF_PLANT_ID = "plant_id"
 CONF_BASE_URL = "base_url"
 CONF_API_URL = "api_url"
+CONF_AUTO_DISCOVER_API = "auto_discover_api"
 CONF_SCAN_INTERVAL = "scan_interval"
 
-# Current SolArk Cloud portal / API (confirmed via www.solarkcloud.com frontend).
+# Portal host used for login Origin/Referer and for API discovery.
 DEFAULT_BASE_URL = "https://www.solarkcloud.com"
+# Last-known-good fallback when discovery is off or fails.
 DEFAULT_API_URL = "https://p2.api.solarkcloud.com"
+DEFAULT_AUTO_DISCOVER_API = True
 DEFAULT_SCAN_INTERVAL = 30  # seconds
 
 # Older hosts that Sol-Ark retired / redirected away from.

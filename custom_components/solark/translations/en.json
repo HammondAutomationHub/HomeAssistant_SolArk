@@ -3,13 +3,14 @@
     "step": {
       "user": {
         "title": "SolArk Cloud",
-        "description": "Enter your SolArk Cloud credentials and plant ID.",
+        "description": "Enter your SolArk Cloud credentials and plant ID. With auto-discover enabled, the API URL is read from the portal frontend.",
         "data": {
           "username": "Username (email)",
           "password": "Password",
           "plant_id": "Plant ID",
-          "base_url": "Base URL",
-          "api_url": "API URL",
+          "auto_discover_api": "Auto-discover API URL from portal",
+          "base_url": "Portal base URL",
+          "api_url": "API URL (used when auto-discover is off, or as fallback)",
           "scan_interval": "Polling interval (seconds)"
         }
       }
@@ -24,8 +25,11 @@
     "step": {
       "init": {
         "title": "SolArk Cloud options",
-        "description": "Adjust advanced options for the SolArk integration.",
+        "description": "Auto-discover reads VUE_APP_BASE_API from the SolArk portal so host changes do not break the integration.",
         "data": {
+          "auto_discover_api": "Auto-discover API URL from portal",
+          "base_url": "Portal base URL",
+          "api_url": "API URL (used when auto-discover is off, or as fallback)",
           "scan_interval": "Polling interval (seconds)"
         }
       }

@@ -452,28 +452,47 @@ class SolArkCloudAPI:
 
     async def get_plant_data(self) -> Dict[str, Any]:
         """Fetch combined plant data: inverter live + power flow + realtime."""
-        # Start with inverter live data
+        # Start with inverter live data (meters, SN energy fallback, etc.)
         live_data = await self._get_inverter_live_data()
 
-        # Then overlay flow data (pvPower, battPower, gridOrMeterPower, loadOrEpsPower, soc)
+        # Overlay flow fields used for live power diagram sensors.
+        flow_keys = (
+            "pvPower",
+            "battPower",
+            "gridOrMeterPower",
+            "loadOrEpsPower",
+            "soc",
+            "minPower",
+            "genPower",
+            "toBat",
+            "batTo",
+            "toGrid",
+            "gridTo",
+            "existsMin",
+            "microOn",
+            "existsMeter",
+            "existsGen",
+        )
         try:
             flow_data = await self._get_flow_data()
             if flow_data:
-                _LOGGER.debug("Merging flow_data keys into live_data: %s", list(flow_data.keys()))
-                for k, v in flow_data.items():
-                    # Do not overwrite energyToday/Total if already present
-                    if k in ("pvPower", "battPower", "gridOrMeterPower", "loadOrEpsPower", "soc"):
-                        live_data[k] = v
+                _LOGGER.debug(
+                    "Merging flow_data keys into live_data: %s", list(flow_data.keys())
+                )
+                for k in flow_keys:
+                    if k in flow_data:
+                        live_data[k] = flow_data[k]
         except Exception as e:  # noqa: BLE001
             _LOGGER.warning("Unable to merge flow data into live data: %s", e)
 
-        # Realtime is the portal's source for plant-level etoday/etotal.
+        # Plant realtime is the portal overview source for etoday/etotal.
+        # Prefer it over inverter-list values when present.
         try:
             realtime = await self._get_realtime_data()
             if realtime:
-                if "etoday" in realtime and "energyToday" not in live_data:
+                if "etoday" in realtime:
                     live_data["energyToday"] = realtime.get("etoday")
-                if "etotal" in realtime and "energyTotal" not in live_data:
+                if "etotal" in realtime:
                     live_data["energyTotal"] = realtime.get("etotal")
         except Exception as e:  # noqa: BLE001
             _LOGGER.warning("Unable to merge realtime data into live data: %s", e)
@@ -501,14 +520,26 @@ class SolArkCloudAPI:
         except (TypeError, ValueError):
             return 0.0
 
+    def _mppt_looks_like_placeholder(self, data: Dict[str, Any]) -> bool:
+        """Detect the fixed volt/current ramp seen in some dy/store payloads."""
+        currents: list[float] = []
+        for i in range(1, 13):
+            if data.get(f"current{i}") is None and data.get(f"volt{i}") is None:
+                continue
+            currents.append(self._safe_float(data.get(f"current{i}")))
+        if len(currents) < 4:
+            return False
+        # Portal placeholder pattern: 0, 1.5, 3.0, 4.5, ...
+        expected = [1.5 * i for i in range(len(currents))]
+        return all(abs(a - b) < 0.01 for a, b in zip(currents, expected))
+
     def parse_plant_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Map combined API fields to sensor values.
 
         Uses:
-        - energy/flow endpoint for:
-          pvPower, battPower, gridOrMeterPower, loadOrEpsPower, soc
-        - dy/store/{sn}/read (+ inverter list / realtime) for:
-          energyToday, energyTotal, meterA/B/C, voltN/currentN, etc.
+        - energy/flow for live powers/SOC (incl. minPower micro PV + direction flags)
+        - plant realtime for energyToday / energyTotal
+        - dy/store meters when an external meter is present
         """
         if not isinstance(data, dict):
             _LOGGER.warning("parse_plant_data got non-dict: %r", data)
@@ -518,7 +549,7 @@ class SolArkCloudAPI:
 
         sensors: Dict[str, Any] = {}
 
-        # ----- Energy today / total -----
+        # ----- Energy today / total (prefer plant realtime / merged keys) -----
         if "energyToday" in data or "etoday" in data:
             sensors["energy_today"] = self._safe_float(
                 data.get("energyToday", data.get("etoday"))
@@ -529,46 +560,49 @@ class SolArkCloudAPI:
             )
 
         # ----- Battery SOC -----
-        # Prefer flow 'soc' if present
         if "soc" in data:
             sensors["battery_soc"] = self._safe_float(data.get("soc"))
-
-        # Fallback: derive from curCap / batteryCap
-        if "battery_soc" not in sensors:
+        else:
+            # Only use capacity ratio when curCap is actually populated.
             cur_cap = self._safe_float(data.get("curCap"))
             batt_cap = self._safe_float(data.get("batteryCap"))
-            if batt_cap > 0:
+            if cur_cap > 0 and batt_cap > 0:
                 sensors["battery_soc"] = (cur_cap / batt_cap) * 100.0
 
-        # ----- PV power -----
-        # Prefer pvPower from flow endpoint
-        if "pvPower" in data:
-            sensors["pv_power"] = self._safe_float(data.get("pvPower"))
+        # ----- PV power (string PV + micro/min inverter contribution) -----
+        has_flow_pv = "pvPower" in data or "minPower" in data
+        if has_flow_pv:
+            pv_power = self._safe_float(data.get("pvPower"))
+            min_power = self._safe_float(data.get("minPower"))
+            if data.get("existsMin") or data.get("microOn") or min_power:
+                pv_power += min_power
+            sensors["pv_power"] = pv_power
+        elif not self._mppt_looks_like_placeholder(data):
+            # Last resort only: live MPPT strings (skip known placeholder ramp).
+            pv_sum = 0.0
+            saw_mppt = False
+            for i in range(1, 13):
+                v_raw = data.get(f"volt{i}")
+                c_raw = data.get(f"current{i}")
+                if v_raw is None and c_raw is None:
+                    continue
+                saw_mppt = True
+                pv_sum += self._safe_float(v_raw) * self._safe_float(c_raw)
+            if saw_mppt and pv_sum != 0.0:
+                sensors["pv_power"] = pv_sum
 
-        # Fallback: sum MPPT strings voltN * currentN
-        pv_sum = 0.0
-        for i in range(1, 13):
-            v_raw = data.get(f"volt{i}")
-            c_raw = data.get(f"current{i}")
-            if v_raw is None and c_raw is None:
-                continue
-            v = self._safe_float(v_raw)
-            c = self._safe_float(c_raw)
-            pv_sum += v * c
-
-        if "pv_power" not in sensors and pv_sum != 0.0:
-            sensors["pv_power"] = pv_sum
-
-        # ----- Battery power -----
-        # Prefer battPower from flow endpoint
+        # ----- Battery power (positive=discharge, negative=charge) -----
         if "battPower" in data:
-            sensors["battery_power"] = self._safe_float(data.get("battPower"))
-
-        # Fallback: DC bus voltage * chargeCurrent
-        if "battery_power" not in sensors:
+            batt_power = abs(self._safe_float(data.get("battPower")))
+            if data.get("toBat"):
+                batt_power = -batt_power
+            elif data.get("batTo"):
+                pass  # discharge stays positive
+            sensors["battery_power"] = batt_power
+        else:
             cur_volt = self._safe_float(data.get("curVolt"))
             charge_current = self._safe_float(data.get("chargeCurrent"))
-            if cur_volt != 0.0 or charge_current != 0.0:
+            if cur_volt != 0.0 and charge_current != 0.0:
                 sensors["battery_power"] = cur_volt * charge_current
 
         # ----- Grid / Meter power (flow) -----
@@ -579,11 +613,14 @@ class SolArkCloudAPI:
         if "loadOrEpsPower" in data:
             sensors["load_power"] = self._safe_float(data.get("loadOrEpsPower"))
 
-        # ----- Grid import/export from meterA/B/C -----
+        # ----- Grid import/export -----
+        # Prefer external meter phases when present; otherwise use flow magnitude
+        # with direction flags (gridTo=import, toGrid=export).
         meter_a = self._safe_float(data.get("meterA"))
         meter_b = self._safe_float(data.get("meterB"))
         meter_c = self._safe_float(data.get("meterC"))
         grid_net = meter_a + meter_b + meter_c
+        grid_flow = self._safe_float(data.get("gridOrMeterPower"))
 
         if grid_net != 0.0:
             if grid_net > 0:
@@ -592,6 +629,12 @@ class SolArkCloudAPI:
             else:
                 sensors["grid_import_power"] = 0.0
                 sensors["grid_export_power"] = abs(grid_net)
+        elif data.get("gridTo"):
+            sensors["grid_import_power"] = abs(grid_flow)
+            sensors["grid_export_power"] = 0.0
+        elif data.get("toGrid"):
+            sensors["grid_import_power"] = 0.0
+            sensors["grid_export_power"] = abs(grid_flow)
         else:
             if "gridImportPower" in data:
                 sensors["grid_import_power"] = self._safe_float(
@@ -601,6 +644,14 @@ class SolArkCloudAPI:
                 sensors["grid_export_power"] = self._safe_float(
                     data.get("gridExportPower")
                 )
+            elif grid_flow != 0.0:
+                # No meter and no direction flags: treat positive as import.
+                if grid_flow > 0:
+                    sensors["grid_import_power"] = grid_flow
+                    sensors["grid_export_power"] = 0.0
+                else:
+                    sensors["grid_import_power"] = 0.0
+                    sensors["grid_export_power"] = abs(grid_flow)
 
         # Ensure keys always exist
         sensors.setdefault("pv_power", 0.0)

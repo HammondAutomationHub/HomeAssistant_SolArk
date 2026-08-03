@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [5.0.2] - 2026-08-03
+
+### Fixed
+
+- **PV power** now includes `minPower` (microinverter / AC-coupled PV) from the energy flow endpoint.
+- **Battery power** is signed using flow direction flags (`batTo` = discharge +, `toBat` = charge −).
+- **Grid import/export** fall back to `gridOrMeterPower` + `gridTo`/`toGrid` when external meter phases are unused.
+- **Energy total/today** prefer plant `/realtime` values over inverter-list totals.
+- Guard against placeholder `dy/store` MPPT volt/current ramps being treated as live PV.
+
+## [5.0.1] - 2026-08-02
+
+### Fixed
+
+- **SolArk Cloud API host migration** - The portal moved to `www.solarkcloud.com` with API base `https://p2.api.solarkcloud.com`. Defaults and existing installs that still used `mysolark.com` / `ecsprod-api-new.solarkcloud.com` are updated automatically on reload.
+- Energy today/total now also falls back to the plant `/realtime` endpoint when inverter summary values are missing.
+
+### Added
+
+- **Auto-discover API URL** - Reads `VUE_APP_BASE_API` from the SolArk portal frontend and stores the resolved API URL on the config entry. Toggleable in setup and Configure options; manual API URL remains as override/fallback.
+
 ## [5.0.0] - 2024-11-21
 
 ### 🎉 Major Features

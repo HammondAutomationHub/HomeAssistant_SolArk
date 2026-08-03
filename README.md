@@ -10,7 +10,8 @@ A Home Assistant custom integration for Sol-Ark inverter systems that connects t
 
 - **Energy Dashboard Compatible** - Native support for Home Assistant's Energy dashboard
 - **Real-time Monitoring** - Live power flow tracking (PV, Battery, Grid, Load)
-- **Cloud-based** - No physical connections required
+- **Cloud-based** - Connects to [solarkcloud.com](https://www.solarkcloud.com) (auto-discovers API host)
+- **Microinverter-aware PV** - Includes portal `minPower` when micro/AC-coupled PV is present
 - **9 Comprehensive Sensors** - All critical solar system metrics
 - **Beautiful Dashboards** - Pre-built power flow visualizations
 - **Long-term Statistics** - Automatic energy tracking and historical data
@@ -20,17 +21,20 @@ A Home Assistant custom integration for Sol-Ark inverter systems that connects t
 
 | Entity ID | Description | Unit | Energy Dashboard |
 |-----------|-------------|------|------------------|
-| `sensor.solark_pv_power` | Solar panel power | W | Use with Riemann Sum |
-| `sensor.solark_battery_power` | Battery charge/discharge | W | Use with Riemann Sum |
+| `sensor.solark_pv_power` | Solar PV power (`pvPower` + `minPower` when present) | W | Use with Riemann Sum |
+| `sensor.solark_battery_power` | Battery power (+ discharge, − charge) | W | Use with Riemann Sum |
 | `sensor.solark_battery_soc` | Battery state of charge | % | Battery level |
 | `sensor.solark_grid_power` | Net grid power | W | Use with Riemann Sum |
 | `sensor.solark_load_power` | Home consumption | W | Use with Riemann Sum |
-| `sensor.solark_grid_import_power` | Grid import | W | Use with Riemann Sum |
-| `sensor.solark_grid_export_power` | Grid export | W | Use with Riemann Sum |
-| `sensor.solark_energy_today` | Daily production | kWh | ✅ Direct use |
-| `sensor.solark_energy_total` | Lifetime production | kWh | ✅ Solar production |
+| `sensor.solark_grid_import_power` | Grid import (meter or flow `gridTo`) | W | Use with Riemann Sum |
+| `sensor.solark_grid_export_power` | Grid export (meter or flow `toGrid`) | W | Use with Riemann Sum |
+| `sensor.solark_energy_today` | Daily production (plant realtime) | kWh | ✅ Direct use |
+| `sensor.solark_energy_total` | Lifetime production (plant realtime) | kWh | ✅ Solar production |
 
-**Note:** Battery power: positive = discharging, negative = charging
+**Notes:**
+- Battery power: positive = discharging, negative = charging (from SolArk flow `batTo` / `toBat` flags).
+- PV power includes microinverter / AC-coupled contribution from flow `minPower` when `existsMin` / `microOn` is set (common when string `pvPower` alone is 0).
+- Grid import/export use external meter phases when available; otherwise they follow `gridOrMeterPower` with direction flags.
 
 ## 📋 Requirements
 
@@ -60,9 +64,9 @@ A Home Assistant custom integration for Sol-Ark inverter systems that connects t
 
 ### 1. Get Your Plant ID
 
-1. Log into [mysolark.com](https://www.mysolark.com)
+1. Log into [solarkcloud.com](https://www.solarkcloud.com)
 2. Navigate to your system
-3. Check the URL: `https://www.mysolark.com/plant/12345`
+3. Check the URL: `https://www.solarkcloud.com/plants/overview/12345/...`
 4. Your Plant ID is `12345`
 
 ### 2. Add Integration
@@ -73,8 +77,12 @@ A Home Assistant custom integration for Sol-Ark inverter systems that connects t
    - **Username**: Your Sol-Ark email
    - **Password**: Your Sol-Ark password
    - **Plant ID**: From step 1
+   - **Auto-discover API URL**: enabled by default (reads the live API host from the portal)
+   - **Portal base URL** / **API URL**: optional overrides (defaults: `https://www.solarkcloud.com` and `https://p2.api.solarkcloud.com`)
    - **Scan Interval**: 30 (seconds)
 4. Click **SUBMIT**
+
+After install you can change discovery, URLs, and scan interval under **Configure** on the integration.
 
 ### 3. Verify
 
@@ -227,9 +235,19 @@ template:
 ## 🔧 Troubleshooting
 
 ### Integration Won't Connect
-- Verify credentials at mysolark.com
-- Confirm Plant ID is correct
+- Verify credentials at [solarkcloud.com](https://www.solarkcloud.com) (portal replaced mysolark.com)
+- Confirm Plant ID is correct (from `/plants/overview/{id}/...`)
+- Leave **Auto-discover API URL** enabled, or set API URL to `https://p2.api.solarkcloud.com`
 - Check logs: **Settings** → **System** → **Logs**
+
+### PV Power Stays at 0 While Portal Shows Production
+- On microinverter / AC-coupled plants, string `pvPower` may be 0 while `minPower` carries production
+- Version **5.0.2+** adds `minPower` into `sensor.solark_pv_power` — update and reload if you still see 0
+
+### Grid Import/Export Stay at 0
+- Plants without an external meter do not populate `meterA/B/C`
+- Version **5.0.2+** derives import/export from flow `gridOrMeterPower` + `gridTo`/`toGrid`
+- Update/reload, then recreate Riemann helpers if needed for the Energy dashboard
 
 ### Sensors Show "Unavailable"
 - Check SolArk Cloud service status
@@ -263,10 +281,17 @@ Then check **Settings** → **System** → **Logs**
 
 ### Architecture
 - Uses `DataUpdateCoordinator` for efficient polling
-- OAuth 2.0 authentication with auto-refresh
-- Combines data from two API endpoints:
-  - Energy flow: `/api/v1/plant/energy/{plant_id}/flow`
-  - Live data: `/api/v1/dy/store/{sn}/read`
+- OAuth 2.0 password grant against `{api_url}/oauth/token` (`client_id: csp-web`)
+- Optional auto-discovery of `VUE_APP_BASE_API` from the SolArk portal frontend
+- Combines data from:
+  - Energy flow: `/api/v1/plant/energy/{plant_id}/flow` (powers, SOC, direction flags, `minPower`)
+  - Plant realtime: `/api/v1/plant/{plant_id}/realtime` (etoday / etotal)
+  - Inverter list + `dy/store/{sn}/read` (SN lookup, meters when present)
+
+### Defaults
+- Portal: `https://www.solarkcloud.com`
+- API: `https://p2.api.solarkcloud.com` (fallback if discovery fails)
+- Obsolete hosts (`mysolark.com`, `ecsprod-api-new.solarkcloud.com`) are migrated automatically on reload
 
 ### Statistics Support
 - Power sensors: `state_class: measurement`
@@ -306,4 +331,4 @@ See [CHANGELOG.md](CHANGELOG.md) for version history.
 
 **Note:** Not officially affiliated with Sol-Ark. Community-developed integration.
 
-**Version:** 5.0.0 | **Supports:** Sol-Ark 5K/8K/12K/15K | **HA:** 2023.5.0+
+**Version:** 5.0.2 | **Supports:** Sol-Ark 5K/8K/12K/15K | **HA:** 2023.5.0+

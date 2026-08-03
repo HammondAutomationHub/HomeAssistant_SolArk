@@ -9,7 +9,13 @@ from homeassistant.core import HomeAssistant
 
 from .const import DOMAIN, CONF_PASSWORD, CONF_USERNAME
 
-TO_REDACT = {CONF_PASSWORD, CONF_USERNAME}
+TO_REDACT = {
+    CONF_PASSWORD,
+    CONF_USERNAME,
+    "access_token",
+    "refresh_token",
+    "token",
+}
 
 
 async def async_get_config_entry_diagnostics(

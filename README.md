@@ -253,7 +253,7 @@ template:
 - Check SolArk Cloud service status
 - Increase scan interval to 60 seconds
 - Reload integration
-- Check debug log: `/config/custom_components/solark/solark_debug.log`
+- Check **Settings** → **System** → **Logs** (credentials/tokens are redacted in SolArk debug output)
 
 ### Dashboard Shows Blank
 1. Verify sensors exist: **Developer Tools** → **States**
@@ -275,7 +275,9 @@ logger:
     custom_components.solark: debug
 ```
 
-Then check **Settings** → **System** → **Logs**
+Then check **Settings** → **System** → **Logs**.
+
+Username, password, and OAuth tokens are redacted from SolArk log messages. The integration no longer writes a separate `solark_debug.log` file.
 
 ## 🏗️ Technical Details
 

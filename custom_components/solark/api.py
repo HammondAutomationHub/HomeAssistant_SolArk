@@ -4,38 +4,65 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timedelta
 import logging
-from pathlib import Path
+import re
 from typing import Any, Dict, Optional
 
 import aiohttp
 
 _LOGGER = logging.getLogger(__name__)
 
-LOG_FILE = Path(__file__).parent / "solark_debug.log"
+_REDACTED = "***REDACTED***"
+_SENSITIVE_KEYS = {
+    "password",
+    "username",
+    "access_token",
+    "refresh_token",
+    "token",
+    "authorization",
+    "client_secret",
+}
+_SECRET_STRING_PATTERNS = (
+    re.compile(r'(?i)("password"\s*:\s*")([^"]*)(")'),
+    re.compile(r'(?i)("username"\s*:\s*")([^"]*)(")'),
+    re.compile(r'(?i)("access_token"\s*:\s*")([^"]*)(")'),
+    re.compile(r'(?i)("refresh_token"\s*:\s*")([^"]*)(")'),
+    re.compile(r'(?i)("token"\s*:\s*")([^"]*)(")'),
+    re.compile(r"(?i)(Bearer\s+)\S+"),
+)
 
-# Ensure we only add one file handler
-if not any(
-    isinstance(h, logging.FileHandler) and getattr(h, "_solark_file_handler", False)
-    for h in _LOGGER.handlers
-):
-    try:
-        file_handler = logging.FileHandler(LOG_FILE, encoding="utf-8")
-        file_handler._solark_file_handler = True  # type: ignore[attr-defined]
-        file_handler.setLevel(logging.DEBUG)
-        formatter = logging.Formatter(
-            "%(asctime)s %(levelname)s %(name)s: %(message)s"
-        )
-        file_handler.setFormatter(formatter)
-        _LOGGER.addHandler(file_handler)
-        _LOGGER.setLevel(logging.DEBUG)
-        _LOGGER.debug("SolArk file logger initialized at %s", LOG_FILE)
-    except Exception as e:  # noqa: BLE001
-        _LOGGER.error("Failed to initialize SolArk file logger: %s", e)
+
+def _redact_secrets(value: Any) -> Any:
+    """Recursively redact credentials/tokens for safe logging."""
+    if isinstance(value, dict):
+        redacted: Dict[str, Any] = {}
+        for key, item in value.items():
+            if str(key).lower() in _SENSITIVE_KEYS:
+                redacted[key] = _REDACTED
+            else:
+                redacted[key] = _redact_secrets(item)
+        return redacted
+    if isinstance(value, list):
+        return [_redact_secrets(item) for item in value]
+    if isinstance(value, str):
+        return _redact_secret_text(value)
+    return value
+
+
+def _redact_secret_text(text: str) -> str:
+    """Redact credential/token patterns from free-form log text."""
+    if not text:
+        return text
+    sanitized = text
+    for pattern in _SECRET_STRING_PATTERNS:
+        if pattern.groups == 3:
+            sanitized = pattern.sub(rf"\1{_REDACTED}\3", sanitized)
+        else:
+            sanitized = pattern.sub(rf"\1{_REDACTED}", sanitized)
+    return sanitized
 
 
 class SolArkCloudAPIError(Exception):
     """Exception for Sol-Ark Cloud API errors."""
-
 
 class SolArkCloudAPI:
     """Sol-Ark Cloud API client."""
@@ -119,8 +146,8 @@ class SolArkCloudAPI:
             "Requesting %s %s with params=%s json=%s",
             method,
             url,
-            params,
-            json_body,
+            _redact_secrets(params),
+            _redact_secrets(json_body),
         )
 
         try:
@@ -138,22 +165,23 @@ class SolArkCloudAPI:
                     method,
                     url,
                     resp.status,
-                    text[:1000],
+                    _redact_secret_text(text[:1000]),
                 )
                 try:
                     resp.raise_for_status()
                 except aiohttp.ClientResponseError as e:
                     raise SolArkCloudAPIError(
-                        f"HTTP {resp.status} for {endpoint}: {text[:500]}"
+                        f"HTTP {resp.status} for {endpoint}: "
+                        f"{_redact_secret_text(text[:500])}"
                     ) from e
 
                 try:
                     result = await resp.json()
                 except Exception as e:  # noqa: BLE001
                     raise SolArkCloudAPIError(
-                        f"Invalid JSON response from {endpoint}: {text[:200]}"
+                        f"Invalid JSON response from {endpoint}: "
+                        f"{_redact_secret_text(text[:200])}"
                     ) from e
-
         except asyncio.TimeoutError as e:  # noqa: BLE001
             raise SolArkCloudAPIError(f"Timeout for {endpoint}") from e
         except aiohttp.ClientError as e:  # noqa: BLE001
@@ -185,7 +213,12 @@ class SolArkCloudAPI:
             "client_id": "csp-web",
         }
 
-        _LOGGER.debug("Attempting OAuth login at %s", url)
+        # Never log username/password — only the endpoint and redacted shape.
+        _LOGGER.debug(
+            "Attempting OAuth login at %s payload_keys=%s",
+            url,
+            sorted(payload.keys()),
+        )
 
         try:
             async with self._session.post(
@@ -198,22 +231,23 @@ class SolArkCloudAPI:
                 _LOGGER.debug(
                     "OAuth login response HTTP %s, body: %s",
                     resp.status,
-                    text[:1000],
+                    _redact_secret_text(text[:1000]),
                 )
                 try:
                     resp.raise_for_status()
                 except aiohttp.ClientResponseError as e:
                     raise SolArkCloudAPIError(
-                        f"OAuth login HTTP {resp.status}: {text[:500]}"
+                        f"OAuth login HTTP {resp.status}: "
+                        f"{_redact_secret_text(text[:500])}"
                     ) from e
 
                 try:
                     result = await resp.json()
                 except Exception as e:  # noqa: BLE001
                     raise SolArkCloudAPIError(
-                        f"OAuth login invalid JSON: {text[:200]}"
+                        f"OAuth login invalid JSON: "
+                        f"{_redact_secret_text(text[:200])}"
                     ) from e
-
         except asyncio.TimeoutError as e:  # noqa: BLE001
             raise SolArkCloudAPIError("OAuth login timeout") from e
         except aiohttp.ClientError as e:  # noqa: BLE001
@@ -255,7 +289,11 @@ class SolArkCloudAPI:
         }
         payload = {"username": self.username, "password": self.password}
 
-        _LOGGER.debug("Attempting legacy login at %s", url)
+        _LOGGER.debug(
+            "Attempting legacy login at %s payload_keys=%s",
+            url,
+            sorted(payload.keys()),
+        )
 
         try:
             async with self._session.post(
@@ -268,22 +306,23 @@ class SolArkCloudAPI:
                 _LOGGER.debug(
                     "Legacy login response HTTP %s, body: %s",
                     resp.status,
-                    text[:1000],
+                    _redact_secret_text(text[:1000]),
                 )
                 try:
                     resp.raise_for_status()
                 except aiohttp.ClientResponseError as e:
                     raise SolArkCloudAPIError(
-                        f"Legacy login HTTP {resp.status}: {text[:500]}"
+                        f"Legacy login HTTP {resp.status}: "
+                        f"{_redact_secret_text(text[:500])}"
                     ) from e
 
                 try:
                     result = await resp.json()
                 except Exception as e:  # noqa: BLE001
                     raise SolArkCloudAPIError(
-                        f"Legacy login invalid JSON: {text[:200]}"
+                        f"Legacy login invalid JSON: "
+                        f"{_redact_secret_text(text[:200])}"
                     ) from e
-
         except asyncio.TimeoutError as e:  # noqa: BLE001
             raise SolArkCloudAPIError("Legacy login timeout") from e
         except aiohttp.ClientError as e:  # noqa: BLE001
@@ -313,17 +352,21 @@ class SolArkCloudAPI:
             await self._oauth_login()
             return True
         except SolArkCloudAPIError as e:
-            _LOGGER.debug("OAuth login failed: %s", e)
-            errors.append(f"oauth: {e}")
+            safe = _redact_secret_text(str(e))
+            _LOGGER.debug("OAuth login failed: %s", safe)
+            errors.append(f"oauth: {safe}")
 
         try:
             await self._legacy_login()
             return True
         except SolArkCloudAPIError as e:
-            _LOGGER.debug("Legacy login failed: %s", e)
-            errors.append(f"legacy: {e}")
+            safe = _redact_secret_text(str(e))
+            _LOGGER.debug("Legacy login failed: %s", safe)
+            errors.append(f"legacy: {safe}")
 
-        raise SolArkCloudAPIError("All login methods failed: " + " | ".join(errors))
+        raise SolArkCloudAPIError(
+            "All login methods failed: " + " | ".join(errors)
+        )
 
     # ------------------------------------------------------------------
     # plant data
@@ -505,7 +548,9 @@ class SolArkCloudAPI:
             await self.get_plant_data()
             return True
         except SolArkCloudAPIError as e:
-            _LOGGER.error("SolArk test_connection failed: %s", e)
+            _LOGGER.error(
+                "SolArk test_connection failed: %s", _redact_secret_text(str(e))
+            )
             return False
 
     # ------------------------------------------------------------------

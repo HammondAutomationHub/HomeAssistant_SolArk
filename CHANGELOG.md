@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [5.0.2] - 2026-08-03
 
+### Security
+
+- Username, password, and OAuth tokens are redacted from debug/error logs.
+- Removed the always-on `solark_debug.log` file handler (use HA logger instead).
+
 ### Fixed
 
 - **PV power** now includes `minPower` (microinverter / AC-coupled PV) from the energy flow endpoint.

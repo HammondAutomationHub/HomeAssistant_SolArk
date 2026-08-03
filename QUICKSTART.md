@@ -111,7 +111,7 @@ If this works, the issue is with the custom cards, not the integration.
 ## Getting Help
 
 - **GitHub Issues:** Report bugs at [GitHub Issues](https://github.com/HammondAutomationHub/HomeAssistant_SolArk/issues)
-- **Logs:** Check `/config/custom_components/solark/solark_debug.log` for details
+- **Logs:** Check **Settings → System → Logs** (credentials are redacted)
 - **Community:** Ask at [Home Assistant Forums](https://community.home-assistant.io/)
 
 ## Next Steps
